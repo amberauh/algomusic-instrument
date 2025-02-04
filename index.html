@@ -6,70 +6,93 @@
 <script src="https://algorithmicmusic.online/js/create-waveform.js"></script>
 <script>
 /* global Tone, nn, d3, createWaveform, createSpectrum */
-const ooh = 'crowdsingingooh.wav'
-const sampler = new Tone.Sampler({
-  urls: { 'C4': ooh }
-})
+const ooh = 'crowdsingingooh.wav';
 
-sampler.toDestination()
-  
-// Create effects
-//const reverb = new Tone.Reverb({ decay: 2, wet: 0.7 }).toDestination();
+// Use a Sampler to allow pitch changes
+const sampler = new Tone.Sampler({
+  urls: { 'C4': ooh },
+  envelope:{attack:0.01,decay:0.1,sustain:1,release:1}
+}).toDestination();
+
+// Effects
 const chorus = new Tone.Chorus(1.5, 0.4, 0.8).toDestination();
 const filter = new Tone.Filter(3000, "lowpass").toDestination();
-
 sampler.chain(filter, chorus);
 
+// UI Label
 nn.create('label')
-  .content('use the "q" through "i" keys to play the  sampler')
-  .addTo('body')
+  .content('use the "q" through "i" keys to play the sampler')
+  .addTo('body');
 
-// here we've created a map or dictionary which assigns an object { freq, pressed } to a series of letters representing keys on our key board
+// Track sustain state for each note
+let sustainState = {};
+
+// Map keys to notes
 const keyMap = {
-  '1': {note: 'Cb4', pressed: false},
+  '1': { note: 'Cb4', pressed: false },
   q: { note: 'C4', pressed: false },
-  '2': {note: 'Db4', pressed: false},
+  '2': { note: 'Db4', pressed: false },
   w: { note: 'D4', pressed: false },
-  '3': {note: 'Eb4', pressed: false},
+  '3': { note: 'Eb4', pressed: false },
   e: { note: 'E4', pressed: false },
-  '4': {note: 'Fb4', pressed: false},
+  '4': { note: 'Fb4', pressed: false },
   r: { note: 'F4', pressed: false },
-  '5': {note: 'Gb4', pressed: false},
+  '5': { note: 'Gb4', pressed: false },
   t: { note: 'G4', pressed: false },
-  '6': {note: 'Ab4', pressed: false},
+  '6': { note: 'Ab4', pressed: false },
   y: { note: 'A5', pressed: false },
-  '7': {note: 'Bb4', pressed: false},
+  '7': { note: 'Bb4', pressed: false },
   u: { note: 'B5', pressed: false },
-  '8': {note: 'Cb5', pressed: false},
+  '8': { note: 'Cb5', pressed: false },
   i: { note: 'C5', pressed: false }
-}
+};
 
-function attack (e) {
-  // select the object from the keyMap matching the key pressed
-  const obj = keyMap[e.key]
-  // if we found an object and it is "not" pressed...
-  if (obj && !obj.pressed) {
-    // ...then trigger the frequency
-    sampler.triggerAttack(obj.note)
-    obj.pressed = true
+// Create a sustain button for each note
+Object.keys(keyMap).forEach(key => {
+  const note = keyMap[key].note;
+  sustainState[note] = false; // Default: sustain OFF
+
+  nn.create('button')
+    .content(`Sustain ${note}: OFF`)
+    .addTo('body')
+    .on('click', function() {
+      sustainState[note] = !sustainState[note]; // Toggle sustain
+      this.content(`Sustain ${note}: ${sustainState[note] ? 'ON' : 'OFF'}`);
+
+      if (!sustainState[note]) {
+        if (!keyMap[key].playing) {
+          sampler.triggerRelease(note); // Stop sound if sustain is turned off
+        }
+      }
+    });
+});
+
+function attack(e) {
+  const obj = keyMap[e.key];
+  if (obj && !obj.playing) {
+    obj.playing = true;
+    sampler.triggerAttack(obj.note);
   }
 }
 
-// here we do the inverse of the function above
-function release (e) {
-  const obj = keyMap[e.key]
-  if (obj && obj.pressed) {
-    sampler.triggerRelease(obj.note)
-    obj.pressed = false
+function release(e) {
+  const obj = keyMap[e.key];
+  if (obj && obj.playing) {
+    obj.playing = false;
+
+    // Stop only if sustain is OFF
+    if (!sustainState[obj.note]) {
+      sampler.triggerRelease(obj.note);
+    }
   }
 }
 
-// events listeners
-nn.on('keydown', attack)
-nn.on('keyup', release)
+// Event listeners
+nn.on('keydown', attack);
+nn.on('keyup', release);
 
-// visualizations
-const wave = createWaveform()
-sampler.connect(wave)
-
+// Visualizations
+const wave = createWaveform();
+sampler.connect(wave);
+</script>
 </script>
