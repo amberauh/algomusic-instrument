@@ -25,8 +25,9 @@ const chords = [
   ['D2','F3','A3','C4','E4']
 ];
 
-//drum beat
+const autoPanner = new Tone.AutoPanner("4n").toDestination().start();
   
+//drum beat
 const beat = "drumbeat2.wav";
 const player = new Tone.Player({
   url: beat,
@@ -91,7 +92,7 @@ async function update() {
 }
 
 async function setup() {
-  synth = new Tone.PolySynth().toDestination();
+  synth = new Tone.PolySynth().connect(autoPanner).toDestination();
 
   // Create the video element and start the camera feed
   video = nn.create('video')
