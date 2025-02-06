@@ -87,6 +87,8 @@ async function setup() {
       videoHeight = video.clientHeight;
       console.log("Video height:", videoHeight); // Log to ensure it's correctly set
     });
+  
+  video.css({ transform: 'scaleX(-1)' });
 
   detector = await setupModel();
 
