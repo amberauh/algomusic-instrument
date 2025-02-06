@@ -24,7 +24,8 @@ const chords = [
   ['G2','F3','A3','B3','E4'], 
   ['D2','F3','A3','C4','E4']
 ];
-
+const colors = ['#FF5733', '#33FF57', '#3357FF', '#F4D03F', '#9B59B6', '#E74C3C'];
+  
 const autoPanner = new Tone.AutoPanner("4n").toDestination().start();
   
 //drum beat
@@ -52,6 +53,10 @@ function playChord(chordIndex) {
   synth.releaseAll(); // stop previous chord
   synth.triggerAttack(chords[chordIndex]); // play selected chord
   lastChordIndex = chordIndex;
+  
+  // Change background color
+  nn.get('body').css({ backgroundColor: colors[chordIndex] });
+
 }
 
 // Detect "r" key press to retrigger the current chord
@@ -137,7 +142,7 @@ async function setup() {
   // Instruction text
   nn.create('p')
     .content('Press "R" to retrigger the current chord')
-    .css({ position: 'absolute', top: '40px', left: '10px', color: 'white' })
+    .css({ position: 'absolute', top: '40px', left: '10px', color: 'black' })
     .addTo('body');
   
   //drum beat button
