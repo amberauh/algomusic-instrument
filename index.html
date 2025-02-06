@@ -4,95 +4,117 @@
 <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 <script src="https://algorithmicmusic.online/js/create-spectrum.js"></script>
 <script src="https://algorithmicmusic.online/js/create-waveform.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
 <script>
-/* global Tone, nn, d3, createWaveform, createSpectrum */
-const ooh = 'crowdsingingooh.wav';
+let detector, video, synth;
+let leftHandY = 0;
+let rightHandY = 0;
+const chords = [
+  ['C4', 'E4', 'G4','B4'], 
+  ['D4', 'F#4', 'A4'], // D Major
+  ['E4', 'G#4', 'B4'], // E Major
+  ['F4', 'A4', 'C5'], // F Major
+  ['G4', 'B4', 'D5']  // G Major
+];
 
-// Use a Sampler to allow pitch changes
-const sampler = new Tone.Sampler({
-  urls: { 'C4': ooh },
-  envelope:{attack:0.01,decay:0.1,sustain:1,release:1}
-}).toDestination();
+//synth = new Tone.PolySynth().toDestination();
 
-// Effects
-const chorus = new Tone.Chorus(1.5, 0.4, 0.8).toDestination();
-const filter = new Tone.Filter(3000, "lowpass").toDestination();
-sampler.chain(filter, chorus);
+//nction playChords() {
+  //ait Tone.start(); // Ensures Tone.js is started
+  //nsole.log('Audio context started');
 
-// UI Label
-nn.create('label')
-  .content('use the "q" through "i" keys to play the sampler')
-  .addTo('body');
+ //hords.forEach((chord, i) => {
+  //synth.triggerAttackRelease(chord, "1s", Tone.now() + i); 
+ //);
+//
 
-// Track sustain state for each note
-let sustainState = {};
+//.create('button')
+ //content('play tone')
+ //addTo('body')
+  //n('click', playChords)
 
-// Map keys to notes
-const keyMap = {
-  '1': { note: 'Cb4', pressed: false },
-  q: { note: 'C4', pressed: false },
-  '2': { note: 'Db4', pressed: false },
-  w: { note: 'D4', pressed: false },
-  '3': { note: 'Eb4', pressed: false },
-  e: { note: 'E4', pressed: false },
-  '4': { note: 'Fb4', pressed: false },
-  r: { note: 'F4', pressed: false },
-  '5': { note: 'Gb4', pressed: false },
-  t: { note: 'G4', pressed: false },
-  '6': { note: 'Ab4', pressed: false },
-  y: { note: 'A5', pressed: false },
-  '7': { note: 'Bb4', pressed: false },
-  u: { note: 'B5', pressed: false },
-  '8': { note: 'Cb5', pressed: false },
-  i: { note: 'C5', pressed: false }
-};
+// this function loads the AI model
+async function setupModel () {
+  // here we pick which pre-trained model we want to use
+  const model = poseDetection.SupportedModels.BlazePose
+  // here we setup some "configuration" settings
+  const detectorConfig = {
+    runtime: 'mediapipe',
+    solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose'
+  }
+  // we combine the two to create the AI "detector" function
+  const detector = await poseDetection.createDetector(model, detectorConfig)
+  return detector
+}
+  
+  
+function playChord() {
+  const chordIndex = Math.floor(nn.map(leftHandY, 0, video.videoHeight, 0, chords.length - 1));
+  const volume = nn.map(rightHandY, 0, video.videoHeight, -10, -50); //adjust volume
+  synth.volume.value = volume; 
+  synth.triggerAttackRelease(chords[chordIndex], 5);  //play selected chord
+}
 
-// Create a sustain button for each note
-Object.keys(keyMap).forEach(key => {
-  const note = keyMap[key].note;
-  sustainState[note] = false; // Default: sustain OFF
+//track hand positions and update sound
+async function update () {
+  // we first use the detector AI function to predict our "pose" based on the video frame
+  const poses = await detector.estimatePoses(video)
+  // we'll store the keypoints for the first person it sees every frame
+  const keypoints = poses[0]?.keypoints
 
-  nn.create('button')
-    .content(`Sustain ${note}: OFF`)
+  if (keypoints) {
+    leftHandY = keypoints[19]?.y || leftHandY;
+    rightHandY = keypoints[20].y || rightHandY;
+    
+    playChord();
+    
+  } 
+  
+  requestAnimationFrame(update);
+}
+
+async function setup () {
+  // we create (&& begin playing) the Tone.js Oscillator
+  synth = new Tone.PolySynth().toDestination();
+  synth.volume.value = -100;
+
+  // here we create the visual elements
+//volEle = nn.create('div')
+//  .css({ color: 'red', fontSize: '48px', position: 'absolute' })
+//  .content('VOL')
+ // .addTo('body')
+
+//freqEle = nn.create('div')
+//  .css({ color: 'red', fontSize: '48px', position: 'absolute' })
+ // .content('FREQ')
+ // .addTo('body')
+
+  // create the video element with our camera feed
+  video = nn.create('video')
     .addTo('body')
-    .on('click', function() {
-      sustainState[note] = !sustainState[note]; // Toggle sustain
-      this.content(`Sustain ${note}: ${sustainState[note] ? 'ON' : 'OFF'}`);
-
-      if (!sustainState[note]) {
-        if (!keyMap[key].playing) {
-          sampler.triggerRelease(note); // Stop sound if sustain is turned off
-        }
-      }
+    .set({
+      autoplay: true,
+      muted: true,
+      stream: await nn.askFor({ video: true })
     });
-});
 
-function attack(e) {
-  const obj = keyMap[e.key];
-  if (obj && !obj.playing) {
-    obj.playing = true;
-    sampler.triggerAttack(obj.note);
-  }
+  // then we create our AI function
+  detector = await setupModel()
+  nn.create('button')
+    .content('play instrument')
+    .addTo('body')
+    .on('click', () => {
+      Tone.start(); //ensure tone.js starts
+      update();
+    });
 }
 
-function release(e) {
-  const obj = keyMap[e.key];
-  if (obj && obj.playing) {
-    obj.playing = false;
 
-    // Stop only if sustain is OFF
-    if (!sustainState[obj.note]) {
-      sampler.triggerRelease(obj.note);
-    }
-  }
-}
+nn.on('load', setup);
 
-// Event listeners
-nn.on('keydown', attack);
-nn.on('keyup', release);
 
-// Visualizations
-const wave = createWaveform();
-sampler.connect(wave);
-</script>
+    
 </script>
