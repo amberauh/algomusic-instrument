@@ -12,15 +12,20 @@
 let detector, video, synth;
 let leftHandY = 0;
 let rightHandY = 0;
-let lastChordIndex = -1; // Track last played chord
+let lastChordIndex = -1;
 
 const chords = [
-  ['C4','E4','G4','B4'], 
-  ['Eb4','G4','Bb4','D4'], 
-  ['Ab4','C4','Eb4','Gb4'], 
-  ['Db4','F4','Ab4','C4'], 
-  ['C5','E5','G5','B5']
+  ['D2','F3','A3','C4','E4'],
+  ['A2','G3','Bb3','C#4','F4'], 
+  ['F2','E3','G3','A3','D4'], 
+  ['C2','E3','G3','B3','D4'], 
+  ['G2','F3','A3','B3','E4'], 
+  ['D2','F3','A3','C4','E4']
 ];
+
+let videoHeight = 0; // Variable to store video height dynamically
+
+const chordHeightRange = 0.8; // The percentage of the screen height where chord changes happen (e.g., 80%)
 
 async function setupModel() {
   const model = poseDetection.SupportedModels.BlazePose;
@@ -32,13 +37,11 @@ async function setupModel() {
 }
 
 function playChord(chordIndex) {
-  if (chordIndex !== lastChordIndex) { 
+  if (chordIndex !== lastChordIndex) {
     synth.releaseAll(); // Stop the previous note
-    const volume = nn.map(rightHandY, 0, video.videoHeight, -10, -50); 
+    const volume = nn.map(rightHandY, 0, videoHeight, -10, -50); 
     synth.volume.value = volume; 
-
-    // Trigger the new chord and sustain it
-    synth.triggerAttack(chords[chordIndex]);
+    synth.triggerAttack(chords[chordIndex]); // Trigger the new chord
     lastChordIndex = chordIndex;
   }
 }
@@ -51,9 +54,17 @@ async function update() {
     leftHandY = keypoints[19]?.y || leftHandY;
     rightHandY = keypoints[20]?.y || rightHandY;
 
-    const chordIndex = Math.floor(nn.map(leftHandY, 0, video.videoHeight, 0, chords.length - 1));
+    // Dynamically calculate the maxY using the updated videoHeight
+    const minY = 0;
+    const maxY = videoHeight * chordHeightRange;
 
-    playChord(chordIndex);
+    // Map hand position to a reduced range within the middle part of the screen
+    const chordIndex = Math.floor(nn.map(leftHandY, minY, maxY, 0, chords.length - 1));
+
+    // Ensure the hand stays within bounds of the selected range (buffer zone)
+    if (chordIndex >= 0 && chordIndex < chords.length) {
+      playChord(chordIndex);
+    }
   }
 
   requestAnimationFrame(update);
@@ -63,16 +74,22 @@ async function setup() {
   synth = new Tone.PolySynth().toDestination();
   synth.volume.value = -100;
 
+  // Create the video element and start the camera feed
   video = nn.create('video')
     .addTo('body')
     .set({
       autoplay: true,
       muted: true,
       stream: await nn.askFor({ video: true })
+    })
+    .on('loadedmetadata', function() {
+      // Ensure video height is set after metadata is loaded
+      videoHeight = video.clientHeight;
+      console.log("Video height:", videoHeight); // Log to ensure it's correctly set
     });
 
   detector = await setupModel();
-  
+
   nn.create('button')
     .content('play instrument')
     .addTo('body')
@@ -83,5 +100,6 @@ async function setup() {
 }
 
 nn.on('load', setup);
+
 
 </script>
