@@ -9,7 +9,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
 <script>
-let detector, video, synth;
+let detector, video, synth, overlay;
 let leftHandY = 0;
 let lastChordIndex = -1;
 let volumeSlider;
@@ -25,20 +25,20 @@ const chords = [
   ['D2','F3','A3','C4','E4']
 ];
 const colors = ['#FF5733', '#33FF57', '#3357FF', '#F4D03F', '#9B59B6', '#E74C3C'];
-  
+
 const autoPanner = new Tone.AutoPanner("4n").toDestination().start();
-  
-//drum beat
+
+// drum beat
 const beat = "drumbeat2.wav";
 const player = new Tone.Player({
   url: beat,
   loop: true,
   autostart: false,
-})
-player.toDestination()
+});
+player.toDestination();
 
-let videoHeight = 0; // Will store video height dynamically
-const chordHeightRange = 0.9; // Range for left hand chord selection
+let videoHeight = 0; 
+const chordHeightRange = 0.9;
 
 async function setupModel() {
   const model = poseDetection.SupportedModels.BlazePose;
@@ -50,28 +50,27 @@ async function setupModel() {
 }
 
 function playChord(chordIndex) {
-  synth.releaseAll(); // stop previous chord
-  synth.triggerAttack(chords[chordIndex]); // play selected chord
+  synth.releaseAll();
+  synth.triggerAttack(chords[chordIndex]); 
   lastChordIndex = chordIndex;
-  
-  // Change background color
-  nn.get('body').css({ backgroundColor: colors[chordIndex] });
 
+  // Change overlay color (not page background)
+  overlay.css({ backgroundColor: colors[chordIndex], opacity: 0.5 });
 }
 
 // Detect "r" key press to retrigger the current chord
 document.addEventListener("keydown", function (event) {
   if (event.key.toLowerCase() === "r" && lastChordIndex !== -1) {
-    synth.releaseAll(); // stop previous chord
-    synth.triggerAttack(chords[lastChordIndex]); // retrigger the same chord
+    synth.releaseAll();
+    synth.triggerAttack(chords[lastChordIndex]);
   }
 });
 
-// stop all sounds when stop button is clicked
 function stopAllSounds() {
   synth.releaseAll();
-  lastChordIndex = -1; // reset last chord index
+  lastChordIndex = -1;
   cancelAnimationFrame(updateLoop);
+  overlay.css({ backgroundColor: "transparent" }); // Reset overlay color
 }
 
 async function update() {
@@ -81,11 +80,8 @@ async function update() {
   if (keypoints) {
     leftHandY = keypoints[19]?.y || leftHandY;
 
-    // calculate the maxY based on video height
     const minY = 0;
     const maxY = videoHeight * chordHeightRange;
-
-    // select a chord based on the left hand Y position
     const chordIndex = Math.floor(nn.map(leftHandY, minY, maxY, 0, chords.length - 1));
 
     if (chordIndex >= 0 && chordIndex < chords.length && chordIndex !== lastChordIndex) {
@@ -99,67 +95,97 @@ async function update() {
 async function setup() {
   synth = new Tone.PolySynth().connect(autoPanner).toDestination();
 
-  // Create the video element and start the camera feed
-  video = nn.create('video')
+  // Create container for video and buttons
+  let container = nn.create('div')
     .addTo('body')
+    .css({
+      position: 'absolute',
+      top: '50%',
+      left: '50%',
+      transform: 'translate(-50%, -50%)',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      gap: '10px',
+      width: '100%'
+    });
+
+  // Create video element
+  let videoWrapper = nn.create('div')
+    .addTo(container)
+    .css({ position: 'relative', display: 'inline-block' });
+
+  video = nn.create('video')
+    .addTo(videoWrapper)
     .set({
       autoplay: true,
       muted: true,
       stream: await nn.askFor({ video: true })
     })
     .on('loadedmetadata', function() {
-      videoHeight = video.clientHeight; // ensure video height is set correctly
+      videoHeight = video.clientHeight;
     });
 
-  video.css({ transform: 'scaleX(-1)' });
+  video.css({ transform: 'scaleX(-1)', width: '100%' });
+
+  // Create color overlay on top of the video
+  overlay = nn.create('div')
+    .addTo(videoWrapper)
+    .css({
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+      backgroundColor: 'transparent',
+      opacity: 0.5
+    });
 
   detector = await setupModel();
 
-  // Create a volume slider
+  // Create buttons below video
+  let buttonContainer = nn.create('div')
+    .addTo(container)
+    .css({ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' });
+
+  nn.create('button')
+    .content('Play Instrument')
+    .addTo(buttonContainer)
+    .on('click', () => {
+      Tone.start();
+      update();
+    });
+
+  nn.create('button')
+    .content('Stop Instrument')
+    .addTo(buttonContainer)
+    .on('click', stopAllSounds);
+
+  nn.create('button')
+    .content('Start Beat')
+    .addTo(buttonContainer)
+    .on('click', () => player.start());
+
+  nn.create('button')
+    .content('Stop Beat')
+    .addTo(buttonContainer)
+    .on('click', () => player.stop());
+
+  // Create volume slider above video
   volumeSlider = nn.create('input')
     .set({ type: 'range', min: -30, max: 0, value: -10 })
     .css({ position: 'absolute', top: '10px', left: '10px', width: '150px' })
     .addTo('body')
     .on('input', function () {
-      synth.volume.value = this.value; // Adjust synth volume
+      synth.volume.value = this.value;
     });
-
-  // Start button
-  nn.create('button')
-    .content('Play Instrument')
-    .addTo('body')
-    .on('click', () => {
-      Tone.start(); 
-      update();
-    });
-
-  // Stop button to release all sounds
-  nn.create('button')
-    .content('Stop Instrument')
-    .addTo('body')
-    .on('click', stopAllSounds);
 
   // Instruction text
   nn.create('p')
     .content('Press "R" to retrigger the current chord')
-    .css({ position: 'absolute', top: '40px', left: '10px', color: 'black' })
-    .addTo('body');
-  
-  //drum beat button
-  nn.create('button')
-    .content('Start Beat')
-    .addTo('body')
-    .on('click', () => player.start())
-  
-  nn.create('button')
-    .content('Stop Beat')
-    .addTo('body')
-    .on('click', () => player.stop())
+    .css({ color: 'black', textAlign: 'center', marginTop: '10px' })
+    .addTo(container);
 }
 
 nn.on('load', setup);
-
-
-
-
 </script>
