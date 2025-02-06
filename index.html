@@ -11,9 +11,11 @@
 <script>
 let detector, video, synth;
 let leftHandY = 0;
-let rightHandY = 0;
 let lastChordIndex = -1;
+let volumeSlider;
+let updateloop;
 
+// Chord options
 const chords = [
   ['D2','F3','A3','C4','E4'],
   ['A2','G3','Bb3','C#4','F4'], 
@@ -23,9 +25,18 @@ const chords = [
   ['D2','F3','A3','C4','E4']
 ];
 
-let videoHeight = 0; // Variable to store video height dynamically
+//drum beat
+  
+const beat = "drumbeat2.wav";
+const player = new Tone.Player({
+  url: beat,
+  loop: true,
+  autostart: false,
+})
+player.toDestination()
 
-const chordHeightRange = 0.8; // The percentage of the screen height where chord changes happen (e.g., 80%)
+let videoHeight = 0; // Will store video height dynamically
+const chordHeightRange = 0.8; // Range for left hand chord selection
 
 async function setupModel() {
   const model = poseDetection.SupportedModels.BlazePose;
@@ -37,13 +48,24 @@ async function setupModel() {
 }
 
 function playChord(chordIndex) {
-  if (chordIndex !== lastChordIndex) {
-    synth.releaseAll(); // Stop the previous note
-    const volume = nn.map(rightHandY, 0, videoHeight, -10, -50); 
-    synth.volume.value = volume; 
-    synth.triggerAttack(chords[chordIndex]); // Trigger the new chord
-    lastChordIndex = chordIndex;
+  synth.releaseAll(); // stop previous chord
+  synth.triggerAttack(chords[chordIndex]); // play selected chord
+  lastChordIndex = chordIndex;
+}
+
+// Detect "r" key press to retrigger the current chord
+document.addEventListener("keydown", function (event) {
+  if (event.key.toLowerCase() === "r" && lastChordIndex !== -1) {
+    synth.releaseAll(); // stop previous chord
+    synth.triggerAttack(chords[lastChordIndex]); // retrigger the same chord
   }
+});
+
+// stop all sounds when stop button is clicked
+function stopAllSounds() {
+  synth.releaseAll();
+  lastChordIndex = -1; // reset last chord index
+  cancelAnimationFrame(updateLoop);
 }
 
 async function update() {
@@ -52,27 +74,24 @@ async function update() {
 
   if (keypoints) {
     leftHandY = keypoints[19]?.y || leftHandY;
-    rightHandY = keypoints[20]?.y || rightHandY;
 
-    // Dynamically calculate the maxY using the updated videoHeight
+    // calculate the maxY based on video height
     const minY = 0;
     const maxY = videoHeight * chordHeightRange;
 
-    // Map hand position to a reduced range within the middle part of the screen
+    // select a chord based on the left hand Y position
     const chordIndex = Math.floor(nn.map(leftHandY, minY, maxY, 0, chords.length - 1));
 
-    // Ensure the hand stays within bounds of the selected range (buffer zone)
-    if (chordIndex >= 0 && chordIndex < chords.length) {
+    if (chordIndex >= 0 && chordIndex < chords.length && chordIndex !== lastChordIndex) {
       playChord(chordIndex);
     }
   }
 
-  requestAnimationFrame(update);
+  updateloop = requestAnimationFrame(update);
 }
 
 async function setup() {
   synth = new Tone.PolySynth().toDestination();
-  synth.volume.value = -100;
 
   // Create the video element and start the camera feed
   video = nn.create('video')
@@ -83,25 +102,58 @@ async function setup() {
       stream: await nn.askFor({ video: true })
     })
     .on('loadedmetadata', function() {
-      // Ensure video height is set after metadata is loaded
-      videoHeight = video.clientHeight;
-      console.log("Video height:", videoHeight); // Log to ensure it's correctly set
+      videoHeight = video.clientHeight; // ensure video height is set correctly
     });
-  
+
   video.css({ transform: 'scaleX(-1)' });
 
   detector = await setupModel();
 
+  // Create a volume slider
+  volumeSlider = nn.create('input')
+    .set({ type: 'range', min: -30, max: 0, value: -10 })
+    .css({ position: 'absolute', top: '10px', left: '10px', width: '150px' })
+    .addTo('body')
+    .on('input', function () {
+      synth.volume.value = this.value; // Adjust synth volume
+    });
+
+  // Start button
   nn.create('button')
-    .content('play instrument')
+    .content('Play Instrument')
     .addTo('body')
     .on('click', () => {
       Tone.start(); 
       update();
     });
+
+  // Stop button to release all sounds
+  nn.create('button')
+    .content('Stop Instrument')
+    .addTo('body')
+    .on('click', stopAllSounds);
+
+  // Instruction text
+  nn.create('p')
+    .content('Press "R" to retrigger the current chord')
+    .css({ position: 'absolute', top: '40px', left: '10px', color: 'white' })
+    .addTo('body');
+  
+  //drum beat button
+  nn.create('button')
+    .content('Start Beat')
+    .addTo('body')
+    .on('click', () => player.start())
+  
+  nn.create('button')
+    .content('Stop Beat')
+    .addTo('body')
+    .on('click', () => player.stop())
 }
 
 nn.on('load', setup);
+
+
 
 
 </script>
