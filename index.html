@@ -12,87 +12,57 @@
 let detector, video, synth;
 let leftHandY = 0;
 let rightHandY = 0;
+let lastChordIndex = -1; // Track last played chord
+
 const chords = [
-  ['C4', 'E4', 'G4','B4'], 
-  ['D4', 'F#4', 'A4'], // D Major
-  ['E4', 'G#4', 'B4'], // E Major
-  ['F4', 'A4', 'C5'], // F Major
-  ['G4', 'B4', 'D5']  // G Major
+  ['C4','E4','G4','B4'], 
+  ['Eb4','G4','Bb4','D4'], 
+  ['Ab4','C4','Eb4','Gb4'], 
+  ['Db4','F4','Ab4','C4'], 
+  ['C5','E5','G5','B5']
 ];
 
-//synth = new Tone.PolySynth().toDestination();
-
-//nction playChords() {
-  //ait Tone.start(); // Ensures Tone.js is started
-  //nsole.log('Audio context started');
-
- //hords.forEach((chord, i) => {
-  //synth.triggerAttackRelease(chord, "1s", Tone.now() + i); 
- //);
-//
-
-//.create('button')
- //content('play tone')
- //addTo('body')
-  //n('click', playChords)
-
-// this function loads the AI model
-async function setupModel () {
-  // here we pick which pre-trained model we want to use
-  const model = poseDetection.SupportedModels.BlazePose
-  // here we setup some "configuration" settings
+async function setupModel() {
+  const model = poseDetection.SupportedModels.BlazePose;
   const detectorConfig = {
     runtime: 'mediapipe',
     solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose'
-  }
-  // we combine the two to create the AI "detector" function
-  const detector = await poseDetection.createDetector(model, detectorConfig)
-  return detector
-}
-  
-  
-function playChord() {
-  const chordIndex = Math.floor(nn.map(leftHandY, 0, video.videoHeight, 0, chords.length - 1));
-  const volume = nn.map(rightHandY, 0, video.videoHeight, -10, -50); //adjust volume
-  synth.volume.value = volume; 
-  synth.triggerAttackRelease(chords[chordIndex], 5);  //play selected chord
+  };
+  return await poseDetection.createDetector(model, detectorConfig);
 }
 
-//track hand positions and update sound
-async function update () {
-  // we first use the detector AI function to predict our "pose" based on the video frame
-  const poses = await detector.estimatePoses(video)
-  // we'll store the keypoints for the first person it sees every frame
-  const keypoints = poses[0]?.keypoints
+function playChord(chordIndex) {
+  if (chordIndex !== lastChordIndex) { 
+    synth.releaseAll(); // Stop the previous note
+    const volume = nn.map(rightHandY, 0, video.videoHeight, -10, -50); 
+    synth.volume.value = volume; 
+
+    // Trigger the new chord and sustain it
+    synth.triggerAttack(chords[chordIndex]);
+    lastChordIndex = chordIndex;
+  }
+}
+
+async function update() {
+  const poses = await detector.estimatePoses(video);
+  const keypoints = poses[0]?.keypoints;
 
   if (keypoints) {
     leftHandY = keypoints[19]?.y || leftHandY;
-    rightHandY = keypoints[20].y || rightHandY;
-    
-    playChord();
-    
-  } 
-  
+    rightHandY = keypoints[20]?.y || rightHandY;
+
+    const chordIndex = Math.floor(nn.map(leftHandY, 0, video.videoHeight, 0, chords.length - 1));
+
+    playChord(chordIndex);
+  }
+
   requestAnimationFrame(update);
 }
 
-async function setup () {
-  // we create (&& begin playing) the Tone.js Oscillator
+async function setup() {
   synth = new Tone.PolySynth().toDestination();
   synth.volume.value = -100;
 
-  // here we create the visual elements
-//volEle = nn.create('div')
-//  .css({ color: 'red', fontSize: '48px', position: 'absolute' })
-//  .content('VOL')
- // .addTo('body')
-
-//freqEle = nn.create('div')
-//  .css({ color: 'red', fontSize: '48px', position: 'absolute' })
- // .content('FREQ')
- // .addTo('body')
-
-  // create the video element with our camera feed
   video = nn.create('video')
     .addTo('body')
     .set({
@@ -101,20 +71,17 @@ async function setup () {
       stream: await nn.askFor({ video: true })
     });
 
-  // then we create our AI function
-  detector = await setupModel()
+  detector = await setupModel();
+  
   nn.create('button')
     .content('play instrument')
     .addTo('body')
     .on('click', () => {
-      Tone.start(); //ensure tone.js starts
+      Tone.start(); 
       update();
     });
 }
 
-
 nn.on('load', setup);
 
-
-    
 </script>
